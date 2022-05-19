@@ -17,9 +17,9 @@ class ZDWSearch():
         self.csts = csts
         self.lock = lock
         self.userInfo = userInfo
-        self.loadPath = os.path.join(r"D:\coderlife\auto_zdw",
+        self.loadPath = os.path.join(os.getcwd(),
                                      "download"+str(key))  # 下载地址
-        
+        os.makedirs(self.loadPath,exist_ok=True)
         self.drv = self.initWebDriver()  # 浏览器实例化
         # 客户名单地址
         self.cstPath = "data/cst.xls"
@@ -95,7 +95,9 @@ class ZDWSearch():
         :return:
         """
         with self.lock:
-            imgPath = "checkImg/checkImg.png"
+            imgPath =os.path.join(os.getcwd(),"checkImg")
+            os.makedirs(imgPath,exist_ok=True)
+            imgPath = os.path.join(imgPath,"checkImg.png")
             ele = self.drv.find_element(by,value)
             ele.click()
             ele.screenshot(imgPath)
@@ -361,18 +363,61 @@ class ZDWSearch():
     """
     主执行层*****************************************************
         """
+
     def run(self):
+        # 登录中登网及设置网站
+        urlZDW = "https://www.zhongdengwang.org.cn/"
+        urlSet = "chrome://settings/clearBrowserData"
+        self.drv.get(urlSet)
+        time.sleep(2)
+        jsNewWindow = "window.open('{}');".format(urlZDW)
+        self.drv.execute_script(jsNewWindow)
+        # 设置清理网站js
+        jsCookie = "return document.querySelector('settings-ui').shadowRoot." \
+                   "querySelector('settings-main').shadowRoot." \
+                   "querySelector('settings-basic-page').shadowRoot." \
+                   "querySelector('settings-section > settings-privacy-page').shadowRoot." \
+                   "querySelector('settings-clear-browsing-data-dialog').shadowRoot." \
+                   "querySelector('#cookiesCheckboxBasic').shadowRoot." \
+                   "querySelector('#checkbox')"
+
+        jsClear = "return document.querySelector('settings-ui').shadowRoot." \
+                  "querySelector('settings-main').shadowRoot.querySelector('settings-basic-page')." \
+                  "shadowRoot.querySelector('settings-section > settings-privacy-page').shadowRoot." \
+                  "querySelector('settings-clear-browsing-data-dialog').shadowRoot." \
+                  "querySelector('#clearBrowsingDataDialog').querySelector('#clearBrowsingDataConfirm')"
+
+        # 获得浏览器句柄
+        handles = self.drv.window_handles
+        # 转向主页
+        self.drv.switch_to.window(handles[1])
+        # 主循环开始
         if self.login():
             cstIndex = 0
+            clearIndex = 0
             FinishFlag = False
             while not FinishFlag:
                 company = self.getCompanyName()
                 if company:
                     self.search(company)
                     cstIndex += 1
-                    if cstIndex %5 == 0:
+                    if cstIndex % 5 == 0:
                         print("每查询5次保存一次数据记录")
                         self.safeCsts()
+                    if cstIndex % 2 == 0:
+                        print("清理浏览器缓存")
+                        # 转到清理页面
+                        self.drv.switch_to.window(handles[0])
+                        time.sleep(2)
+                        self.drv.get(urlSet)
+                        time.sleep(2)
+                        if clearIndex == 0:
+                            self.drv.execute_script(jsCookie).click()
+                            clearIndex += 1
+                        time.sleep(1)
+                        self.drv.execute_script(jsClear).click()
+                        time.sleep(2)
+                        self.drv.switch_to.window(handles[1])
                 else:
                     print("数据查询完毕！")
                     FinishFlag = False
@@ -390,7 +435,7 @@ if __name__ == "__main__":
     opts = []
     tds = []
     for key,userInfo in userInfos.items():
-        if key < 5:
+        if key < 8:
             opts.append(ZDWSearch(userInfo,lock,csts,key))
     for index,opt in enumerate(opts):
         td = threading.Thread(target=opt.run,name=index)
